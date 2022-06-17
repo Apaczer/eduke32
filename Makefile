@@ -5,7 +5,7 @@
 # DEFINES
 
 # Use colored output
-PRETTY_OUTPUT = 0
+PRETTY_OUTPUT = 1
 
 # SDK locations - adjust to match your setup
 DXROOT=../sdk/dx
@@ -22,11 +22,11 @@ BUILD32_ON_64 = 0
 NEDMALLOC = 0
 
 # Debugging/Build options
-RELEASE?=0
+RELEASE?=1
 DEBUGANYWAY?=0
 KRANDDEBUG?=0
 NOSOUND?=0
-OPTLEVEL?=3
+OPTLEVEL?=2
 PROFILER?=0
 
 ifneq (0,$(KRANDDEBUG))
