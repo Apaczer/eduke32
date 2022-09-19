@@ -3096,11 +3096,11 @@ cheat_for_port_credits:
         else
             x = M_Probe(c,50+62-16-16-16,16,x);
 
-        if ((probey==0 || probey==1 || probey==2) && (KB_KeyPressed(sc_LeftArrow) || KB_KeyPressed(sc_RightArrow)))
+       /* if ((probey==0 || probey==1 || probey==2) && (KB_KeyPressed(sc_LeftArrow) || KB_KeyPressed(sc_RightArrow)))
         {
             S_PlaySound(PISTOL_BODYHIT);
             x=probey;
-        }
+        }*/
 
         switch (x)
         {
@@ -3109,7 +3109,7 @@ cheat_for_port_credits:
             probey = 2;
             break;
 
-        case 0:
+       /* case 0:
             do
             {
                 if (KB_KeyPressed(sc_LeftArrow))
@@ -3269,7 +3269,7 @@ cheat_for_port_credits:
             else changesmade |= 2;
             KB_ClearKeyDown(sc_LeftArrow);
             KB_ClearKeyDown(sc_RightArrow);
-            break;
+            break;*/
 
         case 3:
             if (!changesmade) break;
@@ -3359,17 +3359,17 @@ cheat_for_port_credits:
 #endif
         }
 
-        menutext(c,50,MENUHIGHLIGHT(0),0,"RESOLUTION");
+        menutext(c,50,MENUHIGHLIGHT(0),1,"RESOLUTION");
         Bsprintf(tempbuf,"%d x %d",
                  (newvidmode==validmodecnt)?xdim:validmode[newvidmode].xdim,
                  (newvidmode==validmodecnt)?ydim:validmode[newvidmode].ydim);
         mgametext(c+168,50-8,tempbuf,MENUHIGHLIGHT(0),2+8+16);
 
-        menutext(c,50+16,MENUHIGHLIGHT(1),0,"RENDERER");
+        menutext(c,50+16,MENUHIGHLIGHT(1),1,"RENDERER");
         Bsprintf(tempbuf,(vidsets[newvidset]&0x20000)?"%d-bit OpenGL":"Software", vidsets[newvidset]&0x0ffff);
         mgametext(c+168,50+16-8,tempbuf,MENUHIGHLIGHT(1),2+8+16);
 
-        menutext(c,50+16+16,MENUHIGHLIGHT(2),0,"FULLSCREEN");
+        menutext(c,50+16+16,MENUHIGHLIGHT(2),1,"FULLSCREEN");
         menutext(c+168,50+16+16,MENUHIGHLIGHT(2),0,newfullscreen?"YES":"NO");
 
         menutext(c+16,50+16+16+22,MENUHIGHLIGHT(3),changesmade==0,"APPLY CHANGES");

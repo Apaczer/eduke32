@@ -41,7 +41,8 @@ int32_t startwin_settitle(const char *s) { s=s; return 0; }
 //#define SDL_WM_GrabInput(x) SDL_WM_GrabInput(SDL_GRAB_OFF)
 //#define SDL_ShowCursor(x) SDL_ShowCursor(SDL_ENABLE)
 
-#define SURFACE_FLAGS	(SDL_SWSURFACE|SDL_HWPALETTE|SDL_HWACCEL)
+// #define SURFACE_FLAGS	(SDL_SWSURFACE|SDL_HWPALETTE|SDL_HWACCEL)
+#define SURFACE_FLAGS	(SDL_HWSURFACE | SDL_DOUBLEBUF)
 
 // undefine to restrict windowed resolutions to conventional sizes
 #define ANY_WINDOWED_SIZE
@@ -57,7 +58,8 @@ extern int32_t app_main(int32_t argc, const char *argv[]);
 char quitevent=0, appactive=1;
 
 // video
-static SDL_Surface *sdl_surface, *sdl_surface16;
+static SDL_Surface *sdl_surface;
+static SDL_Surface *ScreenSurface;
 int32_t xres=-1, yres=-1, bpp=0, fullscreen=0, bytesperline, imageSize;
 intptr_t frameplace=0;
 int32_t lockcount=0;
@@ -1071,13 +1073,10 @@ int32_t setvideomode(int32_t x, int32_t y, int32_t c, int32_t fs)
 #endif
     {
 	// Force 16-bpp since that is all Dingoo A320 supports
-        initprintf("Setting video mode %dx%d (%d-bpp %s)\n", x, y, 16, ((fs&1) ? "fullscreen" : "windowed"));
-        sdl_surface16 = SDL_SetVideoMode(x, y, 16, SDL_HWSURFACE | ((fs & 1) ? SDL_FULLSCREEN : 0));
-        if (!sdl_surface16)
-        {
-            initprintf("Unable to set video mode!\n");
-            return -1;
-        }
+        initprintf("Setting video mode %dx%d (%d-bpp %s)\n", x,y,16, ((fs&1) ? "fullscreen" : "windowed"));
+        // sdl_surface = SDL_SetVideoMode(x, y, 8, SDL_HWSURFACE | SDL_DOUBLEBUF | ((fs&1)?SDL_FULLSCREEN:0));
+        ScreenSurface = SDL_SetVideoMode(320, 240, 16, SDL_HWSURFACE | SDL_DOUBLEBUF | ((fs&1)?SDL_FULLSCREEN:0));
+        // ScreenSurface = SDL_SetVideoMode(320, 240, 16, SDL_HWSURFACE | /*SDL_DOUBLEBUF | */((fs&1)?SDL_FULLSCREEN:0));
         sdl_surface = SDL_CreateRGBSurface(SDL_SWSURFACE, x, y, 8, 0, 0, 0, 0);
         if (!sdl_surface)
         {
@@ -1432,8 +1431,13 @@ void showframe(int32_t w)
         while (lockcount) enddrawing();
     }
 
-    SDL_BlitSurface(sdl_surface, NULL, sdl_surface16, NULL);
-    SDL_Flip(sdl_surface16);
+     // SDL_Flip(sdl_surface);
+    SDL_Surface* p = SDL_ConvertSurface(sdl_surface, ScreenSurface->format, 0); 
+    // SDL_SoftStretch(p, NULL, ScreenSurface, NULL);
+    SDL_BlitSurface(p, NULL, ScreenSurface, NULL);
+    // SDL_Flip(p);
+    SDL_Flip(ScreenSurface);
+    SDL_FreeSurface(p);
 }
 
 

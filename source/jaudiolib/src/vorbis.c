@@ -23,7 +23,7 @@
  */
 
 #ifdef HAVE_VORBIS
-
+# include <tremor/ivorbisfile.h>
 #ifdef __APPLE__
 # include <vorbis/vorbisfile.h>
 #else
@@ -154,7 +154,7 @@ static playbackstatus MV_GetNextVorbisBlock
    
    bytesread = 0;
    do {
-       bytes = ov_read(&vd->vf, vd->block + bytesread, BLOCKSIZE - bytesread, 0, 2, 1, &bitstream);
+       bytes = ov_read(&vd->vf, vd->block + bytesread, BLOCKSIZE - bytesread, &bitstream);
        //fprintf(stderr, "ov_read = %d\n", bytes);
        if (bytes > 0) { bytesread += bytes; continue; }
        else if (bytes == OV_HOLE) continue;
