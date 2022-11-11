@@ -1,0 +1,5 @@
+
+*.o
+mapster32
+*.a
+eduke32
