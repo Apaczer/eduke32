@@ -1,0 +1,530 @@
+
+## common definitions for Makefile, build/Makefile, source/enet/Makefile and
+## source/jaudiolib/Makefile
+
+# NOTE: make's 'dir' function keeps a trailing shash, the 'abspath' does not!
+MAKEFILE_COMMON_DIR:=$(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+
+# Use colored output
+PRETTY_OUTPUT ?= 1
+
+# Tools
+CROSS=
+CC=$(CROSS)gcc
+CXX=$(CROSS)g++
+AS=$(CROSS)nasm
+AR=$(CROSS)ar
+RC=$(CROSS)windres
+RANLIB=$(CROSS)ranlib
+STRIP=$(CROSS)strip
+
+L_CC=$(CC)
+L_CXX=$(CXX)
+
+CLANG?=0
+
+ifneq (0,$(CLANG))
+    CC=clang -x c -std=gnu89
+    CXX=clang -x c++
+    L_CC=clang -std=gnu89
+    L_CXX=clang
+endif
+
+
+ifeq ($(PLATFORM),WII)
+    ifeq ($(strip $(DEVKITPPC)),)
+        $(error "Please set DEVKITPPC in your environment. export DEVKITPPC=<path to>devkitPPC")
+    endif
+
+    include $(DEVKITPPC)/wii_rules
+
+    RANLIB=powerpc-eabi-ranlib
+    STRIP=powerpc-eabi-strip
+endif
+
+# GCC version, for conditional selection of flags.
+ifndef GCC_MAJOR
+    GCC_MAJOR    := $(shell $(CC) -dumpversion 2>&1 | cut -d'.' -f1)
+endif
+ifeq ($(GCC_MAJOR),)
+    GCC_MAJOR    := 4
+endif
+ifndef GCC_MINOR
+    GCC_MINOR    := $(shell $(CC) -dumpversion 2>&1 | cut -d'.' -f2)
+endif
+ifeq ($(GCC_MINOR),)
+    GCC_MINOR    := 7
+endif
+
+# Detect machine architecture
+ifndef SYSARCH
+    SYSARCH:=$(strip $(shell uname -m))
+endif
+
+# Detect the platform if it wasn't explicitly given to us from
+# the outside world. This allows cross-compilation by overriding
+# CC and giving us PLATFORM specifically.
+#
+ifndef PLATFORM
+    uname:=$(strip $(shell uname -s))
+    PLATFORM=UNKNOWN
+    ifeq ($(findstring Linux,$(uname)),Linux)
+        PLATFORM=LINUX
+    endif
+    ifeq ($(findstring BSD,$(uname)),BSD)
+        PLATFORM=BSD
+    endif
+    ifeq ($(findstring MINGW,$(uname)),MINGW)
+        PLATFORM=WINDOWS
+    endif
+    ifeq ($(findstring Darwin,$(uname)),Darwin)
+        PLATFORM=DARWIN
+    endif
+    ifeq ($(findstring BeOS,$(uname)),BeOS)
+        PLATFORM=BEOS
+    endif
+    ifeq ($(findstring skyos,$(uname)),skyos)
+        PLATFORM=SKYOS
+    endif
+    ifeq ($(findstring QNX,$(uname)),QNX)
+        PLATFORM=QNX
+    endif
+    ifeq ($(findstring SunOS,$(uname)),SunOS)
+        PLATFORM=SUNOS
+    endif
+    ifeq ($(findstring syllable,$(uname)),syllable)
+        PLATFORM=SYLLABLE
+    endif
+endif
+
+ifndef SUBPLATFORM
+    SUBPLATFORM=
+    ifeq ($(PLATFORM),LINUX)
+        SUBPLATFORM=LINUX
+    endif
+    ifeq ($(PLATFORM),DINGOO)
+        SUBPLATFORM=LINUX
+        CROSS=mipsel-linux-
+    endif
+    ifeq ($(PLATFORM),GCW)
+        SUBPLATFORM=LINUX
+        CROSS=mipsel-linux-
+    endif
+    ifeq ($(PLATFORM),CAANOO)
+        SUBPLATFORM=LINUX
+    endif
+endif
+
+
+
+# Binary suffix override:
+EXESUFFIX_OVERRIDE ?=
+
+# Are we running from synthesis?
+SYNTHESIS ?= 0
+
+# Mac OS X Frameworks location
+# Like above, use absolute paths.
+APPLE_FRAMEWORKS ?=/Library/Frameworks
+# Without the resource files packaged in the .app bundle, the startupwindow produces errors, so give it an off switch.
+OSX_STARTUPWINDOW ?= 1
+
+# Engine options
+#  USE_OPENGL     - enables basic OpenGL Polymost renderer
+#  POLYMER        - enables fancy Polymer renderer
+#  NOASM          - disables the use of inline assembly pragmas
+#  LINKED_GTK     - enables compile-time linkage to GTK
+#
+POLYMER = 1
+USE_OPENGL = 1
+NOASM = 0
+LINKED_GTK = 0
+BUILD32_ON_64 ?= 0
+# DO NOT SET THIS TO 1 AND COMMIT IT.
+USE_LIBPNG ?= 1
+USE_LIBVPX ?= 1
+NETCODE ?= 1
+
+LUNATIC ?= 0
+USE_LUAJIT_2_1 ?= 0
+
+# EXPERIMENTAL, unfinished x86_64 assembly routines. DO NOT ENABLE.
+USE_ASM64 ?= 0
+
+ifeq (0,$(USE_OPENGL))
+    POLYMER = 0
+    USE_LIBVPX = 0
+endif
+
+# Debugging/Build options
+#  CPLUSPLUS - 1 = enable C++ building
+#  RELEASE - 1 = no debugging
+#  DEBUGANYWAY - 1 = include debug symbols even when generating release code
+#  DISABLEINLINING - 1 = compile inline functions as extern instead of static inline
+#  FORCEWARNINGS - 1 = do not disable any compiler warnings within the source
+#  KRANDDEBUG - 1 = include logging of krand() calls for debugging the demo system
+#  EFENCE  - 1 = compile with Electric Fence for malloc() debugging
+#  OPTLEVEL	- 0..3 = GCC optimization strategy
+#  LTO - 1 = enable link-time optimization, for GCC 4.5 and up
+#
+CPLUSPLUS?=0
+RELEASE?=1
+DEBUGANYWAY?=0
+KRANDDEBUG?=0
+DISABLEINLINING?=0
+FORCEWARNINGS?=0
+EFENCE?=0
+DMALLOC?=0
+PROFILER?=0
+MUDFLAP?=0
+
+# Select the default optimization level for release and debug builds.
+ifeq ($(RELEASE),0)
+    OPTLEVEL?=0
+else
+    OPTLEVEL?=2
+endif
+
+ifeq ($(RELEASE),0)
+    override STRIP=
+endif
+ifneq ($(DEBUGANYWAY),0)
+    override STRIP=
+endif
+
+ifneq ($(LUNATIC),0)
+    # FIXME: Lunatic builds with LTO don't start up properly as the required
+    # symbol names are apparently not exported.
+    override LTO=0
+endif
+
+ifndef LTO
+    LTO=1
+    ifneq (0,$(CLANG))
+        ifeq ($(PLATFORM), WINDOWS)
+            LTO=0
+        endif
+    endif
+endif
+
+ifeq (1,$(strip $(shell expr $(GCC_MAJOR) \>= 4)))
+    F_NO_STACK_PROTECTOR := -fno-stack-protector
+    # there are some link-time issues with stack protectors, so make it possible to override
+    F_STACK_PROTECTOR_ALL ?= -fstack-protector-all
+    ifeq (0,$(CLANG))
+        F_JUMP_TABLES := -fjump-tables
+    endif
+    M_TUNE_GENERIC := -mtune=generic
+    M_STACKREALIGN := -mstackrealign
+    W_STRICT_OVERFLOW := -Wno-strict-overflow
+endif
+
+ifeq ($(PLATFORM),WINDOWS)
+    ifndef COMPILERTARGET
+        COMPILERTARGET:=$(strip $(shell $(CC) -dumpmachine))
+    endif
+
+    WINBITS=32
+    ifeq ($(findstring x86_64,$(COMPILERTARGET)),x86_64)
+        SYSARCH:=x86_64
+        WINBITS=64
+    endif
+
+    WINLIB?=/$(WINBITS)
+endif
+
+ifeq ($(PLATFORM),DARWIN)
+    ifndef DARWINVERSION
+        DARWINVERSION:=$(strip $(shell uname -r | cut -d . -f 1))
+    endif
+    ifeq (1,$(strip $(shell expr $(DARWINVERSION) \< 10)))
+        DARWIN9 ?= 1
+    endif
+
+#    BASECOMMONFLAGS    += -fno-leading-underscore
+
+    ifeq (1,$(DARWIN9))
+        F_JUMP_TABLES :=
+        W_STRICT_OVERFLOW :=
+    endif
+
+    ifeq (1,$(BUILD32_ON_64))
+        BASECOMMONFLAGS += $(F_NO_STACK_PROTECTOR)
+    else
+        ifeq ($(findstring ppc,$(ARCH)),ppc)
+            BASECOMMONFLAGS += $(F_NO_STACK_PROTECTOR)
+        endif
+    endif
+    ifneq (0,$(OSX_STARTUPWINDOW))
+        BASECOMMONFLAGS+= -DOSX_STARTUPWINDOW
+    endif
+endif
+
+ifndef OPTOPT
+    ifeq ($(PLATFORM), WII)
+        OPTOPT=
+    else
+        OPTOPTARCH=$(ARCH)
+        ifeq (,$(OPTOPTARCH))
+            OPTOPTARCH=$(SYSARCH)
+        endif
+
+        ifeq (i686,$(findstring i686, $(OPTOPTARCH)))
+            OPTOPT=-march=pentium3 $(M_TUNE_GENERIC) -mmmx
+            # -msse2 -mfpmath=sse,387 -malign-double $(M_STACKREALIGN)
+        else
+            OPTOPT=
+        endif
+    endif
+
+    ifneq (,$(CUSTOMOPT))
+        OPTOPT+= $(CUSTOMOPT)
+    endif
+endif
+
+ifneq (0,$(KRANDDEBUG))
+    RELEASE=0
+endif
+ifneq (0,$(PROFILER))
+    DEBUGANYWAY=1
+endif
+
+
+
+# compiler flags etc.
+BASECFLAGS=
+BASECONLYFLAGS=-Wimplicit -Wdeclaration-after-statement
+BASECXXFLAGS= -fno-exceptions -fno-rtti -fpermissive -Wno-write-strings
+BASEASFLAGS=-s #-g
+BASELDFLAGS=
+
+
+ifeq (1,$(strip $(shell expr $(GCC_MAJOR) \>= 4)))
+    ifeq (1,$(strip $(shell expr $(GCC_MINOR) \>= 1)))
+        BASECFLAGS+= -Wno-attributes
+    endif
+endif
+
+# XXX: I (Helixhorned) only know that there's no -Wnarrowing on my OS X 10.6 using GCC 4.2.
+ifeq (1,$(strip $(shell expr $(GCC_MAJOR) \>= 4)))
+    ifeq (1,$(strip $(shell expr $(GCC_MINOR) \>= 3)))
+        BASECXXFLAGS+= -Wno-narrowing
+    endif
+endif
+
+ifeq ($(PLATFORM),WII)
+    override USE_LIBVPX = 0
+endif
+ifeq ($(PLATFORM),GCW)
+    override USE_LIBVPX = 0
+endif
+ifeq ($(PLATFORM),DINGOO)
+    override USE_LIBVPX = 0
+endif
+
+BASELIBS=-lm
+BASELIBDIRS=
+ifneq (0,$(USE_LIBVPX))
+    # On Windows, we link statically to libvpx
+    BASELIBS+= -lvpx
+endif
+
+
+ifneq ($(RELEASE)$(DEBUGANYWAY),10)
+    # debug build or DEBUGANYWAY=1 --> -g flag
+    ifneq (0,$(CLANG))
+        debug=-g
+    else ifeq ($(PLATFORM), WII)
+        debug=-g
+    else
+        debug=-ggdb
+    endif
+endif
+
+debug+= -O$(OPTLEVEL)
+
+# See http://clang.llvm.org/docs/UsersManual.html#controlling-code-generation
+# for a list of possible UBSan options.
+# Clang 3.2 does only supports -fsanitize=address for the AddressSanitizer
+CLANG_DEBUG_FLAGS := -fsanitize=address -fsanitize=bounds,enum,float-cast-overflow,object-size
+
+ifneq (0,$(RELEASE))
+    # Debugging disabled
+    ifeq (0,$(CLANG))
+        debug+= -funswitch-loops
+        ifeq (1,$(strip $(shell expr $(GCC_MAJOR) \< 4)))
+            LTO=0
+        endif
+        ifeq (1,$(strip $(shell expr $(GCC_MAJOR) = 4)))
+            ifeq (1,$(strip $(shell expr $(GCC_MINOR) \< 6)))
+                LTO=0
+            endif
+        endif
+    endif
+    ifeq (0,$(DEBUGANYWAY))
+        debug+= -fomit-frame-pointer -DNDEBUG
+    else
+        debug+= -DDEBUGGINGAIDS
+    endif
+    ifneq (0,$(LTO))
+        BASELDFLAGS+= -flto
+        debug+= -DUSING_LTO -flto
+    endif
+else
+    # Debugging enabled
+    ifeq (0,$(DEBUGANYWAY))
+        debug+= -DDEBUGGINGAIDS
+    else
+        debug+= -DDEBUGGINGAIDS=2
+    endif
+
+    ifneq (0,$(CLANG))
+        debug+= $(CLANG_DEBUG_FLAGS)
+    endif
+    ifeq ($(SUBPLATFORM),LINUX)
+        BASELIBS+=-rdynamic
+    endif
+    ifneq (0,$(MUDFLAP))
+        BASELIBS+= -lmudflapth
+        debug+= -fmudflapth
+    endif
+    ifneq (0,$(PROFILER))
+        ifneq ($(PLATFORM),DARWIN)
+            BASELIBS+= -lprofiler
+        endif
+        debug+= -pg
+    endif
+    ifneq (0,$(KRANDDEBUG))
+        debug+=-DKRANDDEBUG=1
+    endif
+endif
+
+W_NO_UNUSED_RESULT :=
+ifeq (0,$(CLANG))
+#    W_NO_UNUSED_RESULT := $(shell echo '' | $(CC) -E -Wno-unused-result - 2>/dev/null && echo -Wno-unused-result)
+#    W_NO_UNUSED_RESULT := $(findstring -Wno-unused-result,$(W_NO_UNUSED_RESULT))
+    ifeq (1,$(strip $(shell expr $(GCC_MAJOR) \>= 4)))
+        ifeq (1,$(strip $(shell expr $(GCC_MINOR) \>= 4)))
+            W_NO_UNUSED_RESULT := -Wno-unused-result
+        endif
+    endif
+endif
+
+CWARNS := -W -Wall -Werror-implicit-function-declaration \
+    -Wpointer-arith \
+    -Wextra \
+    #-Wstrict-prototypes \
+    #-Waggregate-return \
+    #-Wwrite-strings \
+    #-Wcast-qual -Wcast-align \
+    #-Waddress -Wlogical-op
+
+BASECOMMONFLAGS=$(debug) $(OPTOPT) $(CWARNS) \
+	-funsigned-char -fno-strict-aliasing -DNO_GCC_BUILTINS -D_FORTIFY_SOURCE=2 \
+	$(F_JUMP_TABLES) $(W_NO_UNUSED_RESULT) $(ARCH)
+ifneq (0,$(CLANG))
+    BASECOMMONFLAGS+= -Wno-unused-value -Wno-parentheses
+endif
+BASECOMMONFLAGS+= -Wno-char-subscripts
+
+ifeq (0,$(NETCODE))
+    BASECOMMONFLAGS+= -DNETCODE_DISABLE
+endif
+
+
+# Set up target-specific headers and libs that work across all Makefiles
+ifeq ($(PLATFORM),WINDOWS)
+    BASELIBDIRS+= -L$(abspath $(MAKEFILE_COMMON_DIR)/platform/Windows/lib$(WINLIB))
+    BASECOMMONFLAGS+= -I$(abspath $(MAKEFILE_COMMON_DIR)/platform/Windows/include)
+    BASELDFLAGS+= -static-libgcc
+endif
+ifeq ($(PLATFORM),DARWIN)
+    # include port and brew
+    BASELIBDIRS+= -L$(abspath $(MAKEFILE_COMMON_DIR)/platform/Apple/lib) \
+        -L/opt/local/lib -L/usr/local/lib
+    BASECOMMONFLAGS+= -I$(abspath $(MAKEFILE_COMMON_DIR)/platform/Apple/include) \
+        -I/opt/local/include -I/sw/include -I/usr/local/include
+endif
+ifeq ($(PLATFORM),WII)
+    BASELIBDIRS+= -L$(abspath $(MAKEFILE_COMMON_DIR)/platform/Wii/lib)
+    BASECOMMONFLAGS+= -I$(abspath $(MAKEFILE_COMMON_DIR)/platform/Wii/include)
+endif
+ifeq ($(PLATFORM),GCW)
+    BASECOMMONFLAGS += -D__OPENDINGUX__
+endif
+ifeq ($(PLATFORM),DINGOO)
+    BASECOMMONFLAGS += -D__OPENDINGUX__
+endif
+
+#### Lunatic development
+# LuaJIT standalone interpreter executable:
+LUAJIT:=luajit
+# Options to "luajit -b" for synthesis. Since it runs on Linux, we need to tell
+# the native LuaJIT to emit PE object files.
+ifneq ($(SYNTHESIS),0)
+    LUAJIT_BCOPTS := -o windows -a x86
+endif
+
+ifneq ($(LUNATIC),0)
+    # FIXME: Lunatic doesn't build with inlining because of wacky include
+    # chains!
+    override DISABLEINLINING=1
+
+    BASECOMMONFLAGS+= -I$(MAKEFILE_COMMON_DIR)/source/lunatic -DLUNATIC
+    ifneq ($(USE_LUAJIT_2_1),0)
+        BASECOMMONFLAGS+= -DUSE_LUAJIT_2_1
+    endif
+
+    # Determine size of defs.ilua bytecode once.
+    ifndef DEFS_BC_SIZE
+        DEFS_BC_SIZE := $(shell $(LUAJIT) -bg -t h $(MAKEFILE_COMMON_DIR)/source/lunatic/defs.ilua -)
+        DEFS_BC_SIZE := $(word 3, $(DEFS_BC_SIZE))
+        # Pass the bytecode size to the sub-makes, too.
+        export DEFS_BC_SIZE
+    endif
+    BASECOMMONFLAGS+= -DLUNATIC_DEFS_BC_SIZE=$(DEFS_BC_SIZE)
+
+    ifeq ($(PLATFORM),WINDOWS)
+        BASELIBS+= -lluajit
+    else
+        BASELIBS+= -lluajit-5.1
+    endif
+endif
+
+####
+
+ifneq (0,$(DISABLEINLINING))
+    BASECOMMONFLAGS+= -DDISABLE_INLINING
+endif
+ifneq (0,$(FORCEWARNINGS))
+    BASECOMMONFLAGS+= -DFORCE_WARNINGS
+endif
+
+BASELDFLAGS+= $(OPTOPT)
+
+# This should come from the environment:
+ifdef EDUKE32_MY_DEVELOPER_ID
+    BASECOMMONFLAGS+= -DMY_DEVELOPER_ID=$(EDUKE32_MY_DEVELOPER_ID)
+endif
+
+ifneq (0,$(USE_LIBPNG))
+    BASECOMMONFLAGS+= -DUSE_LIBPNG
+endif
+ifneq (0,$(USE_LIBVPX))
+    BASECOMMONFLAGS+= -DUSE_LIBVPX
+endif
+
+ifneq (0,$(EFENCE))
+    BASELIBS+= -lefence
+    BASECOMMONFLAGS+= -DEFENCE
+endif
+ifneq (0,$(DMALLOC))
+    BASELIBS+= -ldmalloc
+    BASECOMMONFLAGS+= -DDMALLOC
+endif
+
+# Misc. stuff that is constant between Makefiles
+EROOT:=build
+
+# will be potentially overridden in build/Makefile.shared
+EXESUFFIX=

@@ -1,0 +1,43 @@
+definequote 125 FIRST
+definequote 126 SECOND
+definequote 127 THIRD
+
+onevent EVENT_ENTERLEVEL
+    echo 125
+endevent
+
+onevent EVENT_ENTERLEVEL
+    echo 126
+    break
+    echo 126
+endevent
+
+onevent EVENT_ENTERLEVEL
+    echo 127
+endevent
+
+eventloadactor 930  // "police line" ribbon
+    // make non-destroyable
+    setactor[THISACTOR].hitag 0
+enda
+
+eventloadactor 2491  // DUKECAR
+    killit
+enda
+
+/*
+Outputs:
+========
+
+C-CON:
+------
+THIRD
+SECOND
+
+LunaCON:
+--------
+THIRD
+SECOND
+FIRST
+
+*/
