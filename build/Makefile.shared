@@ -1,67 +1,91 @@
 # Shared make information between Build engine and games
 
-MAKEFILE_SHARED:=$(lastword $(MAKEFILE_LIST))
-
 ENGINELIB=libengine.a
 EDITORLIB=libbuild.a
 
+SDLCONFIG = /opt/miyoo/arm-miyoo-linux-uclibcgnueabi/sysroot/usr/bin/sdl-config
 
-# SDK locations - adjust to match your setup
-# Overrides must use absolute paths since this Makefile is included at different directory levels
-#
-DXROOT=$(abspath $(dir $(MAKEFILE_COMMON))../sdk/dx)
-#DXROOT=/c/sdks/directx/dx8
-SDLROOT=$(abspath $(dir $(MAKEFILE_COMMON))../sdk/SDL)
-
-DXROOT_OVERRIDE ?=
-SDLROOT_OVERRIDE ?=
-ifneq ($(DXROOT_OVERRIDE),)
-    DXROOT=$(DXROOT_OVERRIDE)
-endif
-ifneq ($(SDLROOT_OVERRIDE),)
-    SDLROOT=$(SDLROOT_OVERRIDE)
+ifeq ($(wildcard $(SDLCONFIG)),$(SDLCONFIG))
+    SDLROOT		= /usr/local
+else
+    SDLCONFIG	= sdl-config
 endif
 
-SDL_TARGET ?= 2
-SDL_FRAMEWORK ?= 1
+SDL_FRAMEWORK	= 0
 
-ifeq (1,$(strip $(shell expr $(GCC_MAJOR) \>= 4)))
+# Overridden for OSes that don't have the cutdown stdc++ that is supc++
+STDCPPLIB=-lsupc++
+#BUILDCFLAGS= -fPIC
+
+# GCC version, for conditional selection of flags.
+# This is easier than trying to squeeze it out of gcc --version:
+GCC_MAJOR ?= 4
+ifeq (4,$(GCC_MAJOR))
+    F_NO_STACK_PROTECTOR := -fno-stack-protector
+    # there are some link-time issues with stack protectors, so make it possible to override
+    F_STACK_PROTECTOR_ALL ?= -fstack-protector-all
+    F_JUMP_TABLES := -fjump-tables
+    M_TUNE_GENERIC := -mtune=generic
+    M_STACKREALIGN := -mstackrealign
     L_SSP := -lssp
 endif
 
-BUILDCOMMONFLAGS=$(ARCH)
-BUILDLIBS=
-BUILDLIBDIRS=
 
-# NOTE: If your setup doesn't have libstdc++, you can try using libsupc++.
-# Search for STDCPPLIB below and change it to -lsupc++.
+ifndef ARCH
+    ifeq ($(findstring i686, $(shell uname -m)), i686)
+        ARCH=-march=pentium3 $(M_TUNE_GENERIC) -mmmx # -msse2 -mfpmath=sse,387 -malign-double $(M_STACKREALIGN)
+    else
+        ARCH=
+    endif
+endif
 
-ifeq ($(SUBPLATFORM),LINUX)
+# Detect the platform if it wasn't explicitly given to us from
+# the outside world. This allows cross-compilation by overriding
+# CC and giving us PLATFORM specifically.
+#
+ifndef PLATFORM
+    uname=$(strip $(shell uname -s))
+    PLATFORM=UNKNOWN
+    ifeq ($(findstring Linux,$(uname)),Linux)
+        PLATFORM=LINUX
+    endif
+    ifeq ($(findstring BSD,$(uname)),BSD)
+        PLATFORM=BSD
+    endif
+    ifeq ($(findstring MINGW,$(uname)),MINGW)
+        PLATFORM=WINDOWS
+    endif
+    ifeq ($(findstring Darwin,$(uname)),Darwin)
+        PLATFORM=DARWIN
+    endif
+    ifeq ($(findstring BeOS,$(uname)),BeOS)
+        PLATFORM=BEOS
+    endif
+    ifeq ($(findstring skyos,$(uname)),skyos)
+        PLATFORM=SKYOS
+    endif
+    ifeq ($(findstring QNX,$(uname)),QNX)
+        PLATFORM=QNX
+    endif
+    ifeq ($(findstring SunOS,$(uname)),SunOS)
+        PLATFORM=SUNOS
+    endif
+    ifeq ($(findstring syllable,$(uname)),syllable)
+        PLATFORM=SYLLABLE
+    endif
+endif
+
+ifeq ($(PLATFORM),LINUX)
     RENDERTYPE=SDL
-    MIXERTYPE=SDL
-    BUILDCOMMONFLAGS+= -DHAVE_INTTYPES
+    BUILDCFLAGS+= -DHAVE_INTTYPES
     GTKCOMPAT32=0
-    SDL_FRAMEWORK=0
+    WITHOUT_GTK=1
 
-    # On Linux, we don't need to specify libstdc++ manually, the linker will
-    # presumably take care for us.
-    STDCPPLIB:=
-
-    ifeq ($(PLATFORM),GCW)
-        override USE_OPENGL=0
-        override NOASM=1
-    endif
-    ifeq ($(PLATFORM),DINGOO)
-        override USE_OPENGL=0
-        override NOASM=1
-    endif
-
-    ifeq ($(findstring x86_64,$(SYSARCH)),x86_64)
+    ifeq ($(findstring x86_64,$(shell uname -m)),x86_64)
         ifeq (1,$(BUILD32_ON_64))
             # On my 64bit Gentoo these are the 32bit emulation libs
-            BUILDLIBS+= -m32
-            BUILDLIBDIRS+= -L/emul/linux/x86/usr/lib
-            BUILDCOMMONFLAGS+= -m32
+            LIBS+= -m32 -L/emul/linux/x86/usr/lib
+            BUILDCFLAGS+= -m32
             # Override WITHOUT_GTK=0
             GTKCOMPAT32=1
         else
@@ -71,164 +95,65 @@ ifeq ($(SUBPLATFORM),LINUX)
 endif
 ifeq ($(PLATFORM),DARWIN)
     RENDERTYPE    = SDL
-    MIXERTYPE     = SDL
-    STDCPPLIB:=-lstdc++
-    BUILDCOMMONFLAGS    += -DHAVE_INTTYPES
+    BUILDCFLAGS    += -DHAVE_INTTYPES
     GTKCOMPAT32    = 0
-
-    ifeq (1,$(DARWIN9))
-        BUILDCOMMONFLAGS += -DDARWIN9
-    endif
-
-    ifeq (1,$(BUILD32_ON_64))
-        ARCH=-arch i386
-    else
-        # ASM won't work on PowerPC or x86_64
-        override NOASM=1
-    endif
+    SDL_FRAMEWORK    = 1
+    # ASM won't work on PowerPC and currently throws errors on i386 too :-/
+    override NOASM    = 1
 endif
 ifeq ($(PLATFORM),WINDOWS)
-    # Windows types can be SDL or WIN
-    RENDERTYPE?=SDL
-    MIXERTYPE?=WIN
-    ifneq ($(RENDERTYPE),SDL)
-        ifeq ($(MIXERTYPE),SDL)
-            MIXERTYPE:=WIN
-        endif
-    endif
-
-    WITHOUT_GTK?=1
-    SDLCONFIG=
-    SDL_FRAMEWORK=1
-    BUILDCOMMONFLAGS+= -DHAVE_INTTYPES
+    RENDERTYPE ?= WIN
+    BUILDCFLAGS+= -DHAVE_INTTYPES
     EXESUFFIX=.exe
-    BUILDLIBS+= -Wl,--enable-auto-import -mwindows -lmingwex -lcomctl32 -lwinmm $(L_SSP) -lwsock32 -lws2_32 -lshlwapi
-    #-lshfolder
-    #BUILDLIBDIRS+= -L$(ENETROOT)
-    STDCPPLIB:=-lstdc++
-    ifeq ($(findstring x86_64,$(SYSARCH)),x86_64)
-        ifneq (1,$(BUILD32_ON_64))
-            override NOASM=1
-        endif
-    endif
+    LIBS+= -lmingwex -lwinmm -L$(DXROOT)/lib -lwsock32 -lcomctl32 #-lshfolder
+#    STDCPPLIB=-lstdc++
 endif
 ifeq ($(PLATFORM),BSD)
     RENDERTYPE=SDL
-    MIXERTYPE=SDL
-    BUILDCOMMONFLAGS+= -DHAVE_INTTYPES
-    ifneq ($(findstring i386,$(SYSARCH)),i386)
-        override NOASM=1
-    endif
-    STDCPPLIB:=-lstdc++
+    BUILDCFLAGS+= -DHAVE_INTTYPES
 endif
 ifeq ($(PLATFORM),BEOS)
     RENDERTYPE=SDL
-    MIXERTYPE=SDL
-    STDCPPLIB:=-lstdc++
+    STDCPPLIB=-lstdc++
 endif
 ifeq ($(PLATFORM),SKYOS)
     RENDERTYPE=SDL
-    MIXERTYPE=SDL
     EXESUFFIX=.app
     override NOASM=1
-    BUILDCOMMONFLAGS+= -DUNDERSCORES -I/boot/programs/sdk/include/sdl
+    BUILDCFLAGS+= -DUNDERSCORES
     SDLCONFIG=
-    BUILDLIBS+= -lSDL -lnet
-endif
-ifeq ($(PLATFORM),WII)
-    RENDERTYPE=SDL
-    MIXERTYPE=SDL
-    EXESUFFIX=.elf
-    override USE_OPENGL=0
-    override NOASM=1
-    override WITHOUT_GTK=1
-    # -msdata=eabi
-    BUILDCOMMONFLAGS+= -g -mtune=750 -meabi -mhard-float \
-        -DGEKKO -DHAVE_INTTYPES -D__POWERPC__ \
-        -I$(LIBOGC_INC) -I$(PORTLIBS)/include
-    SDLCONFIG=
-    SDL_TARGET=1
-    SDL_FRAMEWORK=1
-    BUILDLIBS+= -lSDL_mixer -lSDL -laesnd_tueidj -lpng -lvorbisidec -lfat -lwiiuse -lbte -logc -lm -lwiikeyboard
-    BUILDLIBDIRS += -L$(LIBOGC_LIB) -L$(PORTLIBS)/lib
+    SDLCONFIG_CFLAGS=-I/boot/programs/sdk/include/sdl
+    LIBS+= -lSDL -lnet
 endif
 ifeq ($(PLATFORM),QNX)
     RENDERTYPE=SDL
-    MIXERTYPE=SDL
     override USE_OPENGL=0
     override NOASM=1
-    STDCPPLIB:=-lstdc++
-    BUILDLIBS+= -lsocket
+    STDCPPLIB=-lstdc++
+    LIBS+= -lsocket
 endif
 ifeq ($(PLATFORM),SUNOS)
     RENDERTYPE=SDL
-    MIXERTYPE=SDL
     override USE_OPENGL=0
     override NOASM=1
-    STDCPPLIB:=-lstdc++
-    BUILDLIBS+= -lsocket -lnsl
+    STDCPPLIB=-lstdc++
+    LIBS+= -lsocket -lnsl
 endif
 ifeq ($(PLATFORM),SYLLABLE)
     RENDERTYPE=SDL
-    MIXERTYPE=SDL
     override USE_OPENGL=0
     override NOASM=1
 endif
 
-ifneq (0,$(CLANG))
-    ifneq (,$(STDCPPLIB))
-        STDCPPLIB:=-Xlinker $(STDCPPLIB)
-    endif
-endif
-
-ifeq ($(SDL_TARGET),2)
-    SDLCONFIG ?= sdl2-config
-    SDLNAME ?= SDL2
-endif
-ifeq ($(SDL_TARGET),1)
-    SDLCONFIG ?= sdl-config
-    SDLNAME ?= SDL
-endif
-
-ifneq ($(SDLCONFIG),)
-    SDLVERSION:=$(strip $(shell $(SDLCONFIG) --version))
-    ifneq ($(SDLVERSION),)
-        SDLROOT:=$(strip $(shell $(SDLCONFIG) --prefix))
-    endif
-endif
-
-SDL_STATIC?=1
-
 ifeq ($(RENDERTYPE),SDL)
-    BUILDCOMMONFLAGS += -DSDL_TARGET=$(SDL_TARGET)
-
     ifeq ($(SDL_FRAMEWORK),1)
-        BUILDCOMMONFLAGS += -DSDL_FRAMEWORK
-    endif
-
-    ifneq ($(PLATFORM),WINDOWS)
-        ifeq ($(SDL_FRAMEWORK),1)
-            ifeq ($(PLATFORM),DARWIN)
-                BUILDLIBS        += -Wl,-framework,SDL
-                BUILDCOMMONFLAGS+= -I$(APPLE_FRAMEWORKS)/SDL.framework/Headers
-            endif
-        else
-            ifneq ($(SDLCONFIG),)
-                SDLCONFIG_COMMONFLAGS:=$(subst -Dmain=SDL_main,,$(strip $(shell $(SDLCONFIG) --cflags)))
-                SDLCONFIG_LIBS:=$(strip $(shell $(SDLCONFIG) --libs))
-
-                BUILDLIBS+= $(SDLCONFIG_LIBS)
-                BUILDCOMMONFLAGS+= $(SDLCONFIG_COMMONFLAGS)
-            endif
-        endif
+        LIBS        += -Wl,-framework,SDL
+        SDLCONFIG_CFLAGS+= -I/Library/Frameworks/SDL.framework/Headers
     else
-        BUILDCOMMONFLAGS += -D_GNU_SOURCE=1
-        ifneq ($(SDL_STATIC),0)
-            ifneq ($(SDL_TARGET),1) # Since SDL2 is under the zlib license, link statically if possible.
-                BUILDLIBS+= -static
-            endif
-        endif
-        BUILDLIBS+= -l$(SDLNAME)main -l$(SDLNAME) -lmingw32 -limm32 -lole32 -loleaut32 -lwinmm -lversion
+    ifneq ($(SDLCONFIG),)
+        LIBS+= $(shell $(SDLCONFIG) --libs)
+        SDLCONFIG_CFLAGS+=$(shell $(SDLCONFIG) --cflags)
+    endif
     endif
 
     ifeq (1,$(WITHOUT_GTK))
@@ -241,123 +166,67 @@ ifeq ($(RENDERTYPE),SDL)
             # include cairo, so we need to filter out those -l switches in order to link
             ifneq ($(LINKED_GTK),0)
                 ifeq ($(GTKCOMPAT32),1)
-                    BUILDLIBS+= $(shell pkg-config --libs gtk+-2.0 | sed 's/\s-l\(pango\)\{0,1\}cairo\S*\s/ /g')
+                    LIBS+= $(shell pkg-config --libs gtk+-2.0 | sed 's/\s-l\(pango\)\{0,1\}cairo\S*\s/ /g')
                 else
-                    BUILDLIBS+= $(shell pkg-config --libs gtk+-2.0)
+                    LIBS+= $(shell pkg-config --libs gtk+-2.0)
                 endif
             endif
         else
             HAVE_GTK2=0
         endif
     endif
-endif
-ifeq ($(RENDERTYPE),WIN)
-    BUILDLIBS+= -ldxguid
-endif
-
-ifeq ($(PLATFORM),WINDOWS)
-    ifeq ($(MIXERTYPE),WIN)
-        ifeq ($(RENDERTYPE),SDL)
-            BUILDLIBS+= -ldxguid_sdl
-        endif
+else
+    ifeq ($(RENDERTYPE),WIN)
+        LIBS+= -mwindows -ldxguid
     endif
 endif
 
-BUILDCOMMONFLAGS+= -DRENDERTYPE$(RENDERTYPE)=1 -DMIXERTYPE$(MIXERTYPE)=1 $(W_STRICT_OVERFLOW)
 
+BUILDCFLAGS+= -DRENDERTYPE$(RENDERTYPE)=1
+
+ifneq (0,$(SUPERBUILD))
+    BUILDCFLAGS+= -DSUPERBUILD
+endif
+ifneq (0,$(POLYMOST))
+    BUILDCFLAGS+= -DPOLYMOST
+endif
 ifneq (0,$(USE_OPENGL))
-    BUILDCOMMONFLAGS+= -DUSE_OPENGL
+    BUILDCFLAGS+= -DUSE_OPENGL
 endif
 ifneq (0,$(NOASM))
-    BUILDCOMMONFLAGS+= -DNOASM
-endif
-ifneq (0,$(USE_ASM64))
-    BUILDCOMMONFLAGS+= -DUSE_ASM64
+    BUILDCFLAGS+= -DNOASM
 endif
 ifneq (0,$(LINKED_GTK))
-    BUILDCOMMONFLAGS+= -DLINKED_GTK
+    BUILDCFLAGS+= -DLINKED_GTK
 endif
 
 ifneq (0,$(POLYMER))
- ifneq (0,$(USE_OPENGL))
-  BUILDCOMMONFLAGS+= -DPOLYMER
+ ifneq (0,$(POLYMOST))
+  ifneq (0,$(USE_OPENGL))
+   BUILDCFLAGS+= -DPOLYMER
+  endif
  endif
 endif
 
-ifneq ($(EXESUFFIX_OVERRIDE),)
-    EXESUFFIX=$(EXESUFFIX_OVERRIDE)
+ifneq (0,$(NEDMALLOC))
+    BUILDCFLAGS+= -DNEDMALLOC
 endif
-
-STATICSTDCPP?=
-ifeq (1,$(STATICSTDCPP))
-    STATICSTDCPP= -static
-endif
-ifeq (0,$(STATICSTDCPP))
-    STATICSTDCPP= -shared
-endif
-
-
-ifneq ($(PLATFORM),WINDOWS)
-    ifneq ($(PLATFORM),WII)
-        BUILDLIBS+= -ldl
-    endif
-    BUILDLIBS+= -pthread
-endif
-
-ifeq ($(PLATFORM),WINDOWS)
-    ifneq ($(USE_LIBPNG),0)
-        BUILDLIBS+= -lpng_mini -lz_mini
-    endif
-else
-    ifeq ($(PLATFORM),DARWIN)
-        ifneq ($(USE_LIBPNG),0)
-            BUILDLIBS+= -lpng # -lz
-        endif
-    else
-        ifneq ($(USE_LIBPNG),0)
-            BUILDLIBS+= -lpng -lz
-        endif
-    endif
-endif
-
 
 ifeq ($(PRETTY_OUTPUT),1)
-BUILD_SETTINGS_COMPILER = \033[1;36mcompiler: \033[0;36m\"$(COMPILER) $(OURCFLAGS)\"
-BUILD_SETTINGS_ASSEMBLER = \033[1;36massembler: \033[0;36m\"$(AS) $(OURASFLAGS)\"
-BUILD_SETTINGS_LINKER = \033[1;36mlinker: \033[0;36m\"$(PRINTLDFLAGS) $(OURLIBS) $(STATICSTDCPP) $(STDCPPLIB)\"
-ifeq (0,$(NOASM))
-    BUILD_SETTINGS = printf "$(BUILD_SETTINGS_COMPILER)\n$(BUILD_SETTINGS_ASSEMBLER)\n$(BUILD_SETTINGS_LINKER)\033[0m\n"
-else
-    BUILD_SETTINGS = printf "$(BUILD_SETTINGS_COMPILER)\n$(BUILD_SETTINGS_LINKER)\033[0m\n"
-endif
-BUILD_STARTED = printf "\033[K\033[1;36mBuild started using:\033[0m\n"; $(BUILD_SETTINGS)
-BUILD_ECHOFLAGS = printf "\033[K\033[1;36mEnded compilation in this directory using:\n$(BUILD_SETTINGS_COMPILER)\033[0m\n"
+BUILD_STARTED = printf "\033[K\033[1;36mBuild started using \"$(CC) $(OURCFLAGS)\"\033[0m\n"
 BUILD_FINISHED = printf "\033[K\033[1;36mBuild successful:\033[0m\n"
 COMPILE_STATUS = printf "\033[K\033[0mBuilding object \033[1m$@\033[0m...\033[0m\r"
-ONESTEP_STATUS = printf "\033[K\033[0mBuilding executable \033[1m$@\033[0m...\033[0m\r"
 COMPILE_OK = printf "\033[K\033[0;32mBuilt object \033[1;32m$@\033[0;32m \033[0m\n"
-ONESTEP_OK = printf "\033[K\033[0;32mBuilt executable \033[1;32m$@\033[0;32m \033[0m\n"
 COMPILE_FAILED = printf "\033[K\033[0;31mFailed building \033[1;31m$@\033[0;31m from\033[0m \033[1;31m$<\033[0;31m!\033[0m\n"; exit 1
-ONESTEP_FAILED = printf "\033[K\033[0;31mFailed building executable \033[1;31m$@\033[0;31m!\033[0m\n"; exit 1
-ARCHIVE_STATUS = printf "\033[K\033[0mCreating library archive \033[1m$@\033[0m...\033[0m\r"
-ARCHIVE_OK = printf "\033[K\033[0;32mCreated library archive \033[1;32m$@\033[0;32m \033[0m\n"
-ARCHIVE_FAILED = printf "\033[K\033[0;31mFailed creating library archive \033[1;31m$@\033[0;31m from\033[0m \033[1;31m$<\033[0;31m!\033[0m\n"; exit 1
 LINK_STATUS = printf "\033[K\033[0;0mLinking executable \033[1m$@\033[0;0m...\033[0m\r"
 LINK_OK = printf "\033[K\033[0;32mLinked executable \033[1;32m$@\033[0;32m \033[0m\n"
 LINK_FAILED = printf "\033[K\033[0;31mFailed linking executable \033[1;31m$@\033[0;31m!\033[0m\n"; exit 1
 else
 BUILD_STARTED = 
-BUILD_ECHOFLAGS =
 BUILD_FINISHED = 
 COMPILE_STATUS = 
-ONESTEP_STATUS = 
 COMPILE_OK = true
-ONESTEP_OK = true
 COMPILE_FAILED = false; exit 1
-ONESTEP_FAILED = false; exit 1
-ARCHIVE_STATUS = 
-ARCHIVE_OK = true
-ARCHIVE_FAILED = false; exit 1
 LINK_STATUS = 
 LINK_OK = true
 LINK_FAILED = false; exit 1

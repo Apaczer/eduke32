@@ -1,94 +1,63 @@
-include ../../Makefile.common
+CC=arm-linux-gcc
+OBJ=arm-linux-obj
+OBJNAME?=libjfaudiolib.a
+PRETTY_OUTPUT?=0
+EROOT?=build
+RELEASE?=1
+OPTLEVEL?=3
+SRC=src
+
+DXROOT ?= c:/sdks/directx/dx8
+
 include ../../$(EROOT)/Makefile.shared
 
-OBJ=obj
-OBJNAME=libjfaudiolib.a
-SRC=src
-INC=include
-EINC=../../$(EROOT)/include
-
-# for BUILD_ECHOFLAGS:
-OURCOMMONFLAGS=$(BASECOMMONFLAGS) $(BUILDCOMMONFLAGS) -I$(INC) -I$(EINC) -I$(SRC) -DHAVE_VORBIS
-ifneq ($(PLATFORM),WII)
-    OURCOMMONFLAGS+= -DHAVE_FLAC
-endif
-ifneq ($(RELEASE),0)
-    # Debugging disabled
-    debug+= $(F_NO_STACK_PROTECTOR)
-endif
-OURCFLAGS=$(OURCOMMONFLAGS) $(BASECFLAGS)
-OURCONLYFLAGS=$(BASECONLYFLAGS)
-OURCXXFLAGS=$(BASECXXFLAGS)
-PRINTLDFLAGS=$(BASELDFLAGS)
-OURASFLAGS=$(BASEASFLAGS)
-
-ifeq ($(PLATFORM),DARWIN)
-    ifeq (1,$(SDL_FRAMEWORK))
-        OURCOMMONFLAGS += -I$(APPLE_FRAMEWORKS)/SDL.framework/Headers \
-                -I$(APPLE_FRAMEWORKS)/SDL_mixer.framework/Headers
-    else
-        OURCOMMONFLAGS += -I$(SDLROOT)/include -I$(SDLROOT)/include/SDL
-    endif
+ifneq (0,$(RELEASE))
+  # Debugging disabled
+  debug=-fomit-frame-pointer -funswitch-loops -O$(OPTLEVEL)
+else
+  # Debugging enabled
+  debug=-ggdb -O0 -DDEBUGGINGAIDS
 endif
 
-COMPILER=$(CC) $(OURCONLYFLAGS)
-ifneq ($(CPLUSPLUS),0)
-    COMPILER=$(CXX) $(OURCXXFLAGS)
+ifneq (0,$(DEBUGANYWAY))
+  debug+=-ggdb
 endif
 
+CFLAGS=$(debug) -W -Wall -Wimplicit -Werror-implicit-function-declaration \
+    -funsigned-char -fno-strict-aliasing -DNO_GCC_BUILTINS -D_FORTIFY_SOURCE=2 \
+    $(F_JUMP_TABLES) $(F_NO_STACK_PROTECTOR)
+
+CPPFLAGS=-Iinclude -Isrc -DHAVE_VORBIS
 
 OBJECTS=$(OBJ)/drivers.o \
+	$(OBJ)/formats.o \
 	$(OBJ)/fx_man.o \
 	$(OBJ)/multivoc.o \
 	$(OBJ)/mix.o \
 	$(OBJ)/mixst.o \
 	$(OBJ)/pitch.o \
-	$(OBJ)/formats.o \
 	$(OBJ)/vorbis.o \
-	$(OBJ)/flac.o \
 	$(OBJ)/driver_nosound.o
 
-ifeq ($(PLATFORM),DARWIN)
-    OURCOMMONFLAGS+= -Ithird-party/common/include
-endif
-
 ifeq ($(PLATFORM),WINDOWS)
-    ifeq ($(MIXERTYPE),WIN)
-        OURCOMMONFLAGS+= -DHAVE_DS -I$(DXROOT) -I$(DXROOT)/include
-        OBJECTS+= $(OBJ)/driver_directsound.o
-    endif
-
-    OURCOMMONFLAGS+= -Ithird-party/common/include
-    OBJNAME=libjfaudiolib_win32.a
-    OBJ=obj_win
-endif
-
-ifeq ($(MIXERTYPE),SDL)
-    OURCOMMONFLAGS+= -DHAVE_SDL
-    ifeq ($(PLATFORM),WINDOWS)
-        OURCOMMONFLAGS += -I$(SDLROOT)/include -I$(SDLROOT)/include/SDL
-    endif
-    ifneq ($(PLATFORM),DARWIN)
-        ifneq ($(PLATFORM),WINDOWS)
-            ifneq ($(PLATFORM),WII)
-                OURCOMMONFLAGS+=`pkg-config --cflags vorbis`
-            endif
-        endif
-    endif
-    OBJECTS+= $(OBJ)/driver_sdl.o
+ CPPFLAGS+= -I$(DXROOT)/include -Ithird-party/mingw32/include
+ OBJECTS+= $(OBJ)/driver_directsound.o
+ OBJNAME=libjfaudiolib_win32.a
+ OBJ=obj_win
+else
+ CPPFLAGS+= -DHAVE_SDL
+ OBJECTS+= $(OBJ)/driver_sdl.o
 endif
 
 # OBJECTS=$(SOURCES:%.c=$(OBJ)/%.o)
 
 $(OBJNAME): $(OBJECTS)
-	$(BUILD_ECHOFLAGS)
-	$(ARCHIVE_STATUS)
-	if $(AR) cr $@ $^; then $(ARCHIVE_OK); else $(ARCHIVE_FAILED); fi
+	$(AR) cr $@ $^
 
 $(OBJECTS): $(OBJ)/%.o: $(SRC)/%.c
 	-mkdir -p $(OBJ)
 	$(COMPILE_STATUS)
-	if $(COMPILER) $(OURCFLAGS) -c $< -o $@; then $(COMPILE_OK); else $(COMPILE_FAILED); fi
+	if $(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@; then $(COMPILE_OK); else $(COMPILE_FAILED); fi
 
 ifeq ($(PRETTY_OUTPUT),1)
 .SILENT:
