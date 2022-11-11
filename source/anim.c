@@ -209,6 +209,9 @@ static void endanimvol43(int32_t fr)
 
 void G_PlayAnim(const char *fn, char t)
 {
+//neo
+//return;
+
     uint8_t *animbuf;
     int32_t i, length=0, numframes=0;
 #ifdef USE_OPENGL

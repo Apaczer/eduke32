@@ -192,8 +192,10 @@ static void decodeframe(uint8_t * srcP, uint8_t * dstP)
         }
 
         /* long op */
-        count = B_LITTLE16(*(uint16_t *)srcP);
-        srcP += sizeof(int16_t);
+        //count = B_LITTLE16(*(uint16_t *)srcP);
+        //srcP += sizeof(int16_t);
+	count = B_LITTLE16(srcP[0] + (((uint16_t)srcP[1]) << 8));
+	srcP += sizeof(int16_t);
 
         if (!count) /* stop sign */
             return;

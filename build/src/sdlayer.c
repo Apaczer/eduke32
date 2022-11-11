@@ -303,7 +303,7 @@ static void attach_debugger_here(void) {}
 /* XXX: libexecinfo could be used on systems without gnu libc. */
 #if !defined _WIN32 && defined __GNUC__ && !defined __OpenBSD__ && !(defined __APPLE__ && defined __BIG_ENDIAN__) && !defined(GEKKO) && !defined(__ANDROID__) && !defined __OPENDINGUX__
 # define PRINTSTACKONSEGV 1
-# include <execinfo.h>
+//# include <execinfo.h>
 #endif
 
 static inline char grabmouse_low(char a);
@@ -318,8 +318,8 @@ static void sighandler(int signum)
         {
             void *addr[32];
             int32_t errfd = fileno(stderr);
-            int32_t n=backtrace(addr, sizeof(addr)/sizeof(addr[0]));
-            backtrace_symbols_fd(addr, n, errfd);
+            //int32_t n=backtrace(addr, sizeof(addr)/sizeof(addr[0]));
+            //backtrace_symbols_fd(addr, n, errfd);
         }
         // This is useful for attaching the debugger post-mortem. For those pesky
         // cases where the program runs through happily when inspected from the start.
@@ -1744,6 +1744,10 @@ int32_t setvideomode(int32_t x, int32_t y, int32_t c, int32_t fs)
     //if (c==8) setpalette(0,256,0);
 
     if (regrab) grabmouse(1);
+   // NEO
+   // Disable mousepointer in FC3000
+   //
+   SDL_ShowCursor(SDL_DISABLE);
 
     return 0;
 }
